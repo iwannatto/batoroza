@@ -1,19 +1,21 @@
-// 構造
-// 山札と場を合わせて「Field」
-// 各プレイヤーを「Player」とする
-// 進行をするのは「Game」
-// Field←→Game←→Playerの図式を守る
-// PlayerにFieldを直接渡すこともあるが、変更はしない。
+// 全体の構造
+// gameManagerがいて、一定時間(0.1sとか)ごとに起きる
+// computerのターンなら進行、playerのターンなら待機
+// player待ちは入力が2段階あることになるので、
+// 待っている方の関数のみをactivateしておく。
+// 両方の関数が動いたらターンを進める処理により進行する。
 
-// 分け方が微妙だった気がしてきたなあ
-// 選択(引くか引かないか)
-// 合法手生成(field, hand)
-// 選択
-// 進行
-// のループでいいんじゃないか
-// プレイヤー待ちを入れることを考えると、基本は
-// それぞれが次をトリガーするという形でいいんじゃないかと思う
-// そうするとgameクラスの必要性がだいぶ微妙になってくるけど
+
+// drawPhase
+//   drawableをもとに引くか引かないか選択
+//   引く処理
+//   validPlays生成
+// discardPhase
+//   validPlaysをもとにplayを選択
+//   捨てる処理
+//   進行、nextPlayeridとdrawable決定
+//
+// をループする
 
 // field
 // [0, ..., 74]をシャッフルしたものを返す
@@ -100,8 +102,8 @@ function validPlaysGenerate(playerid) {
 
   const pass = "pass";
   if (field.lastCard === null) {
-    // フィールドが無なら何でも出せる
-    return [...validPlays, pass]; // TODO: returnなわけない
+    // フィールドが無なら何でも出せるがパスはできない
+    return [...validPlays];
   } else if (cardIsEight(field.lastCard)) {
     // 8切りに対しては8しか出せない
     return [...validPlays.filter(validPlaysCardEight), pass];
@@ -155,20 +157,24 @@ function validPlaysLarger(play, lastCard, underRevolution) {
 
 // discard
 function discard(playerid, play) {
-  let hand = hands[playerid];
+  let hand = hands[playerid].slice(); // コピー
 
   if (play === "pass") {
     ;
   } else if (Array.isArray(play)) {
     // playが革命だった場合、handを革命に現れないカードのみにする
     const revolution = play;
-    hand = hand.filter(card => !discardIsIncluded(card, revolution));
+    hands[playerid] = hand.filter(card => !discardIsIncluded(card, revolution));
   } else {
     // playがcardだった場合、handからplayを除く
-    hand = hand.filter(card => card !== play);
+    hands[playerid] = hand.filter(card => card !== play);
   }
 
-  if (hand.length === 0) { throw new Error("win"); }
+  // 勝ちの処理
+  if (hands[playerid].length === 0) {
+    log.push(playerid.toString() + " win");
+    clearInterval(intervalId);
+  }
 }
 
 function discardIsIncluded(element, array) {
@@ -179,6 +185,8 @@ function discardIsIncluded(element, array) {
 function nextPlayerRotate(playerid) {
   return (playerid+1) % 4;
 }
+
+// phase functions
 
 // drawPhase
 function drawPhaseExecuteComputer(playerid, drawable) {
@@ -194,22 +202,21 @@ function drawPhaseExecuteComputer(playerid, drawable) {
   }
 
   // 合法手生成
-  let validPlays = validPlaysGenerate(playerid);
-
-  // フェーズ移行
-  discardPhaseExecuteComputer(playerid, validPlays);
+  return validPlaysGenerate(playerid);
 }
 
 // function drawPhaseExecutePlayerTrue(playerid) {}
 // function drawPhaseExecutePlayerFalse(playerid) {}
 
-
 // discardPhase
 function discardPhaseExecuteComputer(playerid, validPlays) {
+  if (validPlays.length === 0) { throw new Error("can't do anything"); }
+
   // 捨てる手をランダムで決定
   const play = validPlays[Math.floor(Math.random() * validPlays.length)];
 
   // 捨てる
+  log.push(playerid.toString() + " " + playToStr(play));
   discard(playerid, play);
 
   // フィールドの更新
@@ -248,8 +255,29 @@ function discardPhaseExecuteComputer(playerid, validPlays) {
   let drawable = (field.lastCard === null);
 
   // フェーズ移行
-  drawPhaseExecuteComputer(nextPlayerid, drawable);
+  return {nextPlayerid: nextPlayerid, drawable: drawable};
 }
+
+// gameManager
+function gameManager() {
+  let playerid = field.currentPlayerid;
+  let drawable = field.currentDrawable;
+  let validPlays = drawPhaseExecuteComputer(playerid, drawable);
+  let nextPlayeridAndDrawable = discardPhaseExecuteComputer(playerid, validPlays);
+  field.currentPlayerid = nextPlayeridAndDrawable.nextPlayerid;
+  field.currentDrawable = nextPlayeridAndDrawable.drawable;
+}
+
+// vm
+function drawButtonActivate() {
+  vm.drawButtonActive = true;
+}
+
+function drawButtonInactivate() {
+  vm.drawButtonActive = false;
+}
+
+// main
 
 let field = {
   deck:            fieldDeckInit(),
@@ -257,55 +285,34 @@ let field = {
   lastCard:        null,
   lastPlayerid:    null,
   underRevolution: false,
+  currentPlayerid: 0,
+  currentDrawable: false,
 };
 
 let hands = handsInit();
 
-drawPhaseExecuteComputer(0, false);
+let log = [];
+
+let vm = new Vue({
+  el: "#vm",
+  data: {
+    field: field,
+    hands: hands,
+    log: log,
+    validPlays: [],
+    drawButtonActive: true,
+  },
+  methods: {
+    voidFunc: function() { console.log("void"); },
+  },
+});
+
+
+function voidFunc() {}
+
+let intervalId = setInterval(gameManager, 100); // 100ms間隔
 
 // 旧コード
-
-// util
-function shuffle(array) {
-  for (let i = array.length-1; i > 0; i--) {
-    let r = Math.floor(Math.random() * (i+1));
-    let tmp = array[i];
-    array[i] = array[r];
-    array[r] = tmp;
-  }
-  return array;
-}
-
-function cardNum(card, toStr=false) {
-  if (toStr) { return (card%15 + 1).toString(); }
-  return card%15;
-}
-
-function cardColor(card, toStr=false) {
-  let color = Math.floor(card/15);
-  if (toStr) { return ["r", "b", "y", "g", "o"][color]; }
-  return color;
-}
-
-function cardCompare(card1, card2) {
-  if (cardNum(card1) !== cardNum(card2)) {
-    return cardNum(card1) - cardNum(card2);
-  } else {
-    return cardColor(card1) - cardColor(card2);
-  }
-}
-
-function extractThrees(array) {
-  let res = [];
-  for (let i = 0; i < array.length-2; ++i) {
-    for (let j = i+1; j < array.length-1; ++j) {
-      for (let k = j+1; k < array.length; ++k) {
-        res.push([array[i], array[j], array[k]]);
-      }
-    }
-  }
-  return res;
-}
 
 function playToStr(play) {
   if (typeof play === "number") {
@@ -339,170 +346,4 @@ function attack(play, i) {
     for (let i = 0; i < n; ++i) { hands[last].push(draw()); }
     appendToShow(n, "attack from", i, "to", last);
   }
-}
-
-
-// Field
-class Field {
-  constructor() {
-    this.deck = shuffle(Array.from({length: 75}, (v,k) => k));
-    this.di = 0;
-    this.card = null;
-    // XXX*playerNoとかのがいいかも
-    this.player = null;
-    this.revolution = false;
-  }
-
-  // TODO:エラーハンドリング
-  draw() {
-    if (this.di+1 === 75) { throw new Error("deckOut"); }
-    return this.deck[this.di++];
-  }
-
-  // TODO:drawNの用意
-}
-
-// Player
-// Human
-// Computer
-
-class Player {
-  constructor(array) {
-    this.hand = array;
-    this.hand.sort(cardCompare);
-  }
-
-  add(array) {
-    this.hand = this.hand.concat(array);
-    this.hand.sort(cardCompare);
-  }
-
-  // TODO:エラーハンドリング
-  // TODO:最後ターン攻撃に対応
-  // XXX:ないやつを指定しても成功してしまう
-  remove(array) {
-    this.hand = this.hand.filter(i => array.indexOf(i) === -1);
-    this.hand.sort(cardCompare);
-    if (this.hand.length === 0) { throw new Error("win"); }
-  }
-
-  // TODO:8上がりと革命上がり禁止を実装
-  // 革命とパス含めた出せる手を配列にして返す
-  validPlays(field) {
-    if (field.card === null) {
-      return [...this.hand, ...this.revolutions(), "pass"];
-    } else if (cardNum(field.card) === 7) {
-      return [...this.hand.filter(i => cardNum(i) === 7), "pass"];
-    } else if (typeof field.card === "number") {
-      return [
-        ...this.hand.filter(i =>
-          cardColor(i) !== cardColor(field.card) &&
-          (field.revolution ? cardNum(i) < cardNum(field.card)
-                            : cardNum(i) > cardNum(field.card))),
-        ...this.revolutions(),
-        "pass"];
-    } else {
-      throw new Error("strange");
-    }
-  }
-
-  // 革命の配列を返す
-  revolutions() {
-    let rev = [];
-    for (let i = 0; i < 15; ++i) {
-      if (i == 7) { continue; }
-      let iCards = this.hand.filter(j => cardNum(j) === cardNum(i));
-      if (iCards.length >= 3) { rev = [...rev, ...extractThrees(iCards)]; }
-    }
-    return rev;
-  }
-}
-
-class Computer extends Player {
-  constructor(n, field) { super(n, field); }
-
-  // 引くかどうか、true/false
-  play1(field) {
-    // ランダム(1/10)で引く
-    return (Math.floor(Math.random() * 10) < 1) ? true : false;
-  }
-
-  // 出す、数字/配列（革命）/"pass"（パス）
-  play2(field) {
-    let validPlays = this.validPlays(field);
-    // ランダムで出す
-    return validPlays[Math.floor(Math.random() * validPlays.length)];
-  }
-}
-
-// Game
-
-class Game {
-  constructor() {
-    this.field = new Field();
-    this.players = [];
-    // TODO:drawNで書き換える
-    for (let i = 0; i < 4; ++i) {
-      let a = [];
-      for (let j = 0; j < 10; ++j) { a.push(this.field.draw()); }
-      this.players.push(new Computer(a));
-    }
-  }
-
-  // 返り値は次のplayerNo
-  playComputer(i) {
-    let field = this.field;
-    let player = this.players[i];
-
-    if (field.player === i) {
-      field.card = null;
-      field.player = null;
-    }
-
-    if (field.card !== null || cardNum(field.card) !== 7) {
-      let draw = player.play1(field);
-      if (draw) { player.add(field.draw()); }
-    }
-
-    let card = field.card;
-    let play = player.play2(field);
-    console.log(playToStr(play));
-    if (typeof play === "number") {
-      // 8に8を出したら即流れる
-      if (cardNum(card) === 7) {
-        player.remove([play]);
-        field.card = null;
-        field.player = null;
-        return i;
-      } else {
-        player.remove([play]);
-        field.card = play;
-        field.player = i;
-        return (i+1)%4;
-      }
-    } else if (Array.isArray(play)) {
-      player.remove(play);
-      field.card = null;
-      field.player = null;
-      field.revolution = !field.revolution;
-      return (i+1)%4;
-    } else if (play === "pass") {
-      return (i+1)%4;
-    }
-  }
-}
-
-var g = new Game();
-var next = 0;
-
-var vm = new Vue({
-  el: '#vm',
-  data: {
-    game: g
-  }
-});
-
-while (true) {
-  console.log(next);
-  next = g.playComputer(next);
 }

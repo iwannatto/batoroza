@@ -9,6 +9,17 @@
 
 <body>
   <div id="vm">
-    {{ game }}
+    <div>{{ field }}</div>
+    <div>{{ hands }}</div>
+    <button v-show="drawButtonActive" v-on:click="voidFunc">draw</button>
+    <button v-show="drawButtonActive" v-on:click="voidFunc">not draw</button>
+    <button v-for="play in validPlays" v-on:click="voidFunc">
+      {{ play }}
+    </button>
+    <ul>
+      <li v-for="line in log">
+        {{ line }}
+      </li>
+    </ul>
   </div>
 </body>
