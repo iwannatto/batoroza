@@ -41,89 +41,6 @@ function attack(play, i) {
   }
 }
 
-// /**
-// * プレイヤー4人にカードを10枚づつ配る
-// * @return {Array<Array<Card>>}
-// */
-// // function handsInit() {
-// //   let hands = [[], [], [], []];
-// //   for (let i = 0; i < 4; ++i) {
-// //     for (let j = 0; j < 10; ++j) { hands[i].push(field.deck.draw()); }
-// //     handsSortHand(hands[i]);
-// //   }
-// //   return hands;
-// // }
-//
-// function handsSortHand(hand) {
-//   hand.sort(cardCompare);
-// }
-//
-// // validPlays
-// // |         |===1          |<=3        |otherwise|
-// // |:--------|:-------------|:----------|:--------|
-// // |null     |without 8, rev|without rev|anything |
-// // |8        |nothing       |only 8     |only 8   |
-// // |otherwise|without 8, rev|without rev|upper    |
-// /**
-// * @param {number} playerid
-// * @return {Array<!Card|Array<number>|string>}
-// */
-// function validPlaysGenerate(playerid) {
-//   const hand = hands[playerid];
-//   /** @type {Array<Card>} */
-//   let validPlays = hand.slice(); // コピー
-//
-//   // 8上がり禁止
-//   if (hand.length === 1) {
-//     validPlays = validPlays.filter(card => !card.isEight());
-//   }
-//   // 革命上がり禁止のため、4枚以上のときのみ革命が可能になる
-//   if (hand.length >= 4) {
-//     validPlays = [...validPlays, ...validPlaysRevolutions(validPlays)];
-//   }
-//
-//   const pass = "pass";
-//   if (field.lastCard === null) {
-//     // フィールドが無なら何でも出せるがパスはできない
-//     return [...validPlays];
-//   } else if (field.lastCard.isEight()) {
-//     // 8切りに対しては8しか出せない
-//     return [...validPlays.filter(validPlaysCardEight), pass];
-//   } else {
-//     // フィールドより大きい数字（と革命）
-//     return [...validPlays.filter(validPlaysLarger), pass];
-//   }
-// }
-//
-// // discard
-// function discard(playerid, play) {
-//   let hand = hands[playerid].slice(); // コピー
-//
-//   if (play === "pass") {
-//     ;
-//   } else if (Array.isArray(play)) {
-//     // playが革命だった場合、handを革命に現れないカードのみにする
-//     const revolution = play;
-//     hands[playerid] = hand.filter(card => !discardIsIncluded(card, revolution));
-//   } else {
-//     // playがcardだった場合、handからplayを除く
-//     hands[playerid] = hand.filter(card => card.id !== play.id);
-//   }
-//
-//   // 勝ちの処理
-//   if (hands[playerid].length === 0) {
-//     log.push(playerid.toString() + " win");
-//     clearInterval(intervalId);
-//   }
-// }
-//
-// function discardIsIncluded(element, array) {
-//   return array.indexOf(element) !== -1;
-// }
-//
-//
-// // let hands = handsInit();
-
 
 // ここから本コード
 
@@ -216,7 +133,7 @@ class Deck {
   }
 }
 
-// ここからfix
+// Player
 class Player {
   constructor(playerid) {
     /** @const {number} */
@@ -363,6 +280,8 @@ function validPlaysLarger(play) {
     return play.n > lastCard.n;
   }
 }
+
+// ここからfix
 
 
 // nextPlayerRotate
