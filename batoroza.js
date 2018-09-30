@@ -41,6 +41,24 @@ function attack(play, i) {
   }
 }
 
+
+// ここから本コード
+// utility
+/**
+* @param {Array<*>} array
+* @return {Array<*>}
+*/
+function shuffle(array) {
+  for (let i = array.length-1; i > 0; i--) {
+    let r = Math.floor(Math.random() * (i+1));
+    let tmp = array[i];
+    array[i] = array[r];
+    array[r] = tmp;
+  }
+  return array;
+}
+
+
 class Card {
   /** @param {number} id 0~74のカードid */
   constructor(id) {
@@ -78,34 +96,35 @@ function cardCompare(card1, card2) {
   return card1.color < card2.color;
 }
 
-/**
-* カード配列[0, ..., 74]をシャッフルしたものを返す
-* @return {!Array<Card>}
-*/
-function deckInit() {
-  // カード配列[0, ..., 74]を用意
-  let deck = Array.from({length: 75}, (v,k) => new Card(k));
-
-  // シャッフル
-  for (let i = deck.length-1; i > 0; i--) {
-    let r = Math.floor(Math.random() * (i+1));
-    let tmp = deck[i];
-    deck[i] = deck[r];
-    deck[r] = tmp;
+// ここからfix
+class Deck {
+  constructor() {
+    /**
+    * カード配列[0, ..., 74]をシャッフルしたもの
+    * @private @const {Array<!Card>}
+    */
+    this.cards_ = shuffle(Array.from({length: 75}, (v, k) => new Card(k)));
+    /** @private {number} */
+    this.topi_ = 0;
   }
 
-  return deck;
+  /**
+  * 引いたらデッキが0枚になってしまうならtrue
+  * @return {boolean}
+  */
+  willOut() {
+    return this.topi_ === 74;
+  }
+
+  /** @return {!Card} */
+  draw() {
+    // TODO:エラーを使わない制御に書き直すといいかも
+    if (this.willOut()) { throw new Error("deck out"); }
+
+    return this.cards_[this.topi_++];
+  }
 }
 
-function fieldDeckDrawable() {
-  return field.di < 74;
-}
-
-// 山札切れになった瞬間ゲーム終了処理に移行なので、そのように書き直す
-function fieldDeckDraw() {
-  if (!fieldDeckDrawable()) { throw new Error("deck out"); }
-  return field.deck[field.di++];
-}
 
 /**
 * プレイヤー4人にカードを10枚づつ配る
@@ -114,7 +133,7 @@ function fieldDeckDraw() {
 function handsInit() {
   let hands = [[], [], [], []];
   for (let i = 0; i < 4; ++i) {
-    for (let j = 0; j < 10; ++j) { hands[i].push(fieldDeckDraw()); }
+    for (let j = 0; j < 10; ++j) { hands[i].push(field.deck.draw()); }
     handsSortHand(hands[i]);
   }
   return hands;
@@ -277,8 +296,8 @@ function drawPhaseExecuteComputer(playerid, drawable) {
     let willDraw = (Math.floor(Math.random() * 10) < 1) ? true : false;
 
     // 引く処理の実行
-    if (willDraw && fieldDeckDrawable()) {
-      hands[playerid].push(fieldDeckDraw());
+    if (willDraw && !field.deck.willOut()) {
+      hands[playerid].push(field.deck.draw());
       handsSortHand(hands[playerid]);
     }
   }
@@ -292,7 +311,7 @@ function drawPhaseExecuteHuman(willDraw) {
   let drawable = field.currentDrawable;
 
   if (willDraw) {
-    hands[playerid].push(fieldDeckDraw());
+    hands[playerid].push(field.deck.draw());
     handsSortHand(hands[playerid]);
   }
 }
@@ -371,8 +390,7 @@ function drawButtonInactivate() {
 // main
 
 let field = {
-  deck:            deckInit(),
-  di:              0,
+  deck:            new Deck(),
   /** @type {?Card} */
   lastCard:        null,
   lastPlayerid:    null,
