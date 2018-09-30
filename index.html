@@ -9,17 +9,22 @@
 
 <body>
   <div id="vm">
-    <div>{{ field }}</div>
-    <div>{{ players }}</div>
-    <button v-show="drawButtonActive" v-on:click="drawPhaseExecuteHuman(true)">
-      draw
+    <div>{{ hand }}</div>
+
+    <div>
+      <button v-show="drawButtonActive" v-on:click="drawPhase(true);">
+        draw
+      </button>
+      <button v-show="notDrawButtonActive" v-on:click="drawPhase(false);">
+        not draw
+      </button>
+    </div>
+
+    <button v-show="validPlaysActive" v-for="play in validPlays"
+            v-on:click="discardPhase(play);">
+      {{ play.toString() }}
     </button>
-    <button v-show="drawButtonActive" v-on:click="drawPhaseExecuteHuman(false)">
-      not draw
-    </button>
-    <button v-for="play in validPlays">
-      {{ play }}
-    </button>
+
     <ul>
       <li v-for="line in log">
         {{ line }}

@@ -1,86 +1,14 @@
 // 全体の構造
-// gameManagerがいて、一定時間(0.1sとか)ごとに起きる
-// computerのターンなら進行、playerのターンなら待機
-// player待ちは入力が2段階あることになるので、
-// 待っている方の関数のみをactivateしておく。
-// 両方の関数が動いたらターンを進める処理により進行する。
+// playerに対してdrawPhaseとdiscardPhaseをすることでターン進行
+// discardPhaseの最後でplayer更新
+// computerTurnが一定時間(0.1s)で起きて、今computerの番ならターンを進行させる
+// humanの番ならdrawPhaseとdiscardPhaseはボタンで起動する
 
-// drawPhase
-//   drawableをもとに引くか引かないか選択
-//   引く処理
-//   validPlays生成
-// discardPhase
-//   validPlaysをもとにplayを選択
-//   捨てる処理
-//   進行、nextPlayeridとdrawable決定
-//
-// をループする
-
-// 旧コード
-// TODO:全部変える
-function attackable(play) {
-  if (field === null) { return false; }
-  let a = Math.floor(field/15);
-  let b = Math.floor(play/15);
-  if (a+1 === b) {
-    return (a === 0) || (a === 2);
-  } else if (a-1 === b) {
-    return (a === 1) || (a === 3);
-  }
-}
-
-// TODO:全部変える
-function attack(play, i) {
-  if (!attackable(play)) { return; }
-  let a = field%15;
-  let b = play%15;
-  let n = Math.floor(Math.abs(a-b) / 3);
-  if (n > 0) {
-    for (let i = 0; i < n; ++i) { hands[last].push(draw()); }
-    appendToShow(n, "attack from", i, "to", last);
-  }
-}
-
-/**
-* カードであり、なおかつ8であるならtrue
-* @param {!Card|Array<number>} play
-* @return {boolean}
-*/
-function validPlaysCardEight(play) {
-  return (play instanceof Card) && play.isEight();
-}
-
-/**
-* 革命ならtrue
-* カードであり、フィールドと同色でなくかつ革命考慮した上で数字が大きいならtrue
-* @param {!Card|Array<number>} play
-* @return {boolean}
-*/
-function validPlaysLarger(play) {
-  // 呼び出され方的に、lastCardはnullでないCard
-  let lastCard = field.lastCard;
-  let underRevolution = field.underRevolution;
-
-  // 革命なのでtrue
-  if (Array.isArray(play)) { return true; }
-
-  // 革命でないので、以下playはCard
-
-  if (play.color === lastCard.color) { return false; }
-
-  if (underRevolution) {
-    return play.n < lastCard.n;
-  } else {
-    return play.n > lastCard.n;
-  }
-}
-
-// nextPlayerRotate
-function nextPlayerRotate(playerid) {
-  return (playerid+1) % 4;
-}
-
-// ここから本コード
+// ハードコード集：
+// player4人
+// humanはplayerid=0の一人だけ
+// 初期手札は5枚
+// 攻撃あり（３）
 
 // utility
 /**
@@ -96,6 +24,7 @@ function shuffle(array) {
   }
   return array;
 }
+
 
 // Card
 class Card {
@@ -279,6 +208,29 @@ class Play {
       return ""
     }
   }
+
+  /**
+  * @param {?Card} card
+  * @return {number}
+  */
+  attackN(fieldCard) {
+    if (!this.isCard()) { throw new Error("Play attackN"); }
+    let card = this.card_;
+
+    if (fieldCard === null) { return 0; }
+
+    let attackColor = [[0, 1], [1, 0], [2, 3], [3, 2]];
+    for (let i = 0; i < attackColor.length; ++i) {
+      if (card.color === attackColor[i][0] &&
+          fieldCard.color === attackColor[i][1]) {
+        let diff = card.n - fieldCard.n;
+        if (field.underRevolution) { diff *= -1; }
+        return Math.floor(diff/3);
+      }
+    }
+
+    return 0;
+  }
 }
 
 // Player
@@ -287,7 +239,7 @@ class Player {
     /** @const {number} */
     this.id = playerid;
     /** @private {Array<Card>} */
-    this.hand_ = Array.from({length: 10}, (v, k) => field.deck.draw());
+    this.hand_ = Array.from({length: 5}, (v, k) => field.deck.draw());
     this.sortHand_();
     /** @type {Array<Play>} */
     this.validPlays = [];
@@ -359,16 +311,24 @@ class Player {
       ;
     }
 
-    log.push(`${this.id} ${play} | ${this.hand_}`);
+    log.unshift(`${this.id} ${play} | ${this.hand_.length}`);
 
     // 勝ちの処理
     if (this.hand_.length === 0) {
-      log.push(`player ${this.id} win`);
+      log.unshift(`player ${this.id} win`);
       clearInterval(intervalId);
     }
   }
 
-  // 数字昇順ソート（数字が同じなら色番号昇順）
+  handString() {
+    let s = "";
+    for (let i = 0; i < this.hand_.length; ++i) {
+      s += `${this.hand_[i]} `;
+    }
+    return s;
+  }
+
+  // hand_を数字昇順ソート（数字が同じなら色番号昇順）
   sortHand_() {
     let cardCompare = function(card1, card2) {
       if (card1.n !== card2.n) { return card1.n > card2.n; }
@@ -404,58 +364,72 @@ function extractRevolutions(hand) {
   return revolutions;
 }
 
-// TODO:ここから下をきれいにする
-
-// phase functions
-
-// drawPhase
-function drawPhaseExecuteComputer(playerid, drawable) {
+// phase
+function drawPhase(willDraw) {
+  let playerid = field.currentPlayerid;
   let player = players[playerid];
 
-  // 引く処理
-  if (drawable) {
-    // 引くかどうかをランダム(1/10)で決定
-    let willDraw = (Math.floor(Math.random() * 10) < 1) ? true : false;
+  // TODO:デッキアウトの処理
+  if (willDraw) { player.draw(); }
 
-    // 引く処理の実行
-    // デッキアウトの例外処理がめんどいのでデッキアウトになるなら引かない
-    if (willDraw && !field.deck.willOut()) {
-      player.draw();
-    }
-  }
-
-  // 合法手生成
   player.generateValidPlays();
-}
-
-
-// discardPhase
-function discardPhaseExecuteComputer(playerid) {
-  let player = players[playerid];
-  let validPlays = player.validPlays;
 
   // パスすらできないときの処理
   // TODO:こうならないようにする（できる）
-  if (validPlays.length === 0) {
+  if (player.validPlays.length === 0) {
+    log.unshift("can't do anything");
     clearInterval(intervalId);
-    throw new Error("can't do anything");
   }
 
-  // 捨てる手をランダムで決定
-  const play = validPlays[Math.floor(Math.random() * validPlays.length)];
+  // TODO:0ハードコーディングはまずいかも
+  if (playerid === 0) {
+    vm.drawButtonActive = false;
+    vm.notDrawButtonActive = false;
+    vm.hand = player.handString();
+    vm.validPlaysActive = true;
+    vm.validPlays = player.validPlays;
+  }
+}
+
+function discardPhase(play) {
+  let playerid = field.currentPlayerid;
+  let player = players[playerid];
 
   // 捨てる
   player.discard(play);
+  if (playerid === 0) {
+    vm.hand = player.handString();
+    vm.validPlaysActive = false;
+  }
 
   // フィールド退避
   const oldLastCard = field.lastCard;
   const oldLastPlayerid = field.lastPlayerid;
 
+  // 攻撃
+  // TODO:遅延勝利評価
+  if (play.isCard()) {
+    let attacked = players[oldLastPlayerid];
+    let n = play.attackN(oldLastCard);
+    for (let i = 0; i < n; ++i) {
+      if (i === 0) {
+        log.unshift(`attack ${n} from ${playerid} to ${oldLastPlayerid}`);
+      }
+      attacked.draw();
+      if (i === n-1 && oldLastPlayerid === 0) {
+        vm.hand = attacked.handString();
+      }
+    }
+  }
+
+  // 革命の反映
+  if (play.isRevolution()) { field.underRevolution = !field.underRevolution; }
+
   // フィールドの更新
   if (play.isPass()) {
     // パスのとき
     // 1巡するならフィールドリセット、そうでないなら何もしない
-    if (oldLastPlayerid === nextPlayerRotate(playerid)) {
+    if (oldLastPlayerid === (playerid+1)%4) {
       field.lastCard = null;
       field.lastPlayerid = null;
     }
@@ -470,45 +444,42 @@ function discardPhaseExecuteComputer(playerid) {
     field.lastPlayerid = playerid;
   }
 
-  // 次プレイヤーの決定
-  let nextPlayerid = null;
+  // 次プレイヤーの決定・更新
   if (play.isEight() && oldLastCard && oldLastCard.isEight()) {
     // 8切り返しのときのみプレイヤー変わらず
-    nextPlayerid = playerid;
+    field.currentPlayerid = playerid;
   } else {
     // TODO:人数ハードコーディングはよくない
-    nextPlayerid = (playerid+1) % 4;
+    field.currentPlayerid = (playerid+1) % 4;
   }
 
   // drawableの決定
-  let drawable = (field.lastCard === null);
+  // nullでも8でもないときに引ける
+  field.currentDrawable
+      = !((field.lastCard === null) || (field.lastCard.isEight()));
 
-  // フェーズ移行
-  return {nextPlayerid: nextPlayerid, drawable: drawable};
+  // 次プレイヤーならdrawボタンとnot drawボタンを更新
+  if (field.currentPlayerid === 0) {
+    vm.drawButtonActive = field.currentDrawable;
+    vm.notDrawButtonActive = true;
+  }
 }
 
-// gameManager
-function gameManager() {
-  let playerid = field.currentPlayerid;
-  let drawable = field.currentDrawable;
+function computerTurn() {
+  if (field.currentPlayerid === 0) { return; }
 
-  drawPhaseExecuteComputer(playerid, drawable);
-  let nextPlayeridAndDrawable = discardPhaseExecuteComputer(playerid);
-  field.currentPlayerid = nextPlayeridAndDrawable.nextPlayerid;
-  field.currentDrawable = nextPlayeridAndDrawable.drawable;
-}
+  // 引くかどうかをランダム(1/10)で決定
+  let willDraw = (Math.floor(Math.random() * 10) < 1) ? true : false;
+  willDraw = willDraw && field.currentDrawable;
+  drawPhase(willDraw);
 
-// vm
-function drawButtonActivate() {
-  vm.drawButtonActive = true;
-}
-
-function drawButtonInactivate() {
-  vm.drawButtonActive = false;
+  // 取る行動をランダムで決定
+  let validPlays = players[field.currentPlayerid].validPlays;
+  let play = validPlays[Math.floor(Math.random() * validPlays.length)];
+  discardPhase(play);
 }
 
 // main
-
 let field = {
   deck:            new Deck(),
   /** @type {?Card} */
@@ -522,22 +493,22 @@ let field = {
 // TODO:グローバルっぽい名前つける
 let players = Array.from({length: 4}, (v, k) => new Player(k));
 
-let human = [0];
-
 let log = [];
 
 let vm = new Vue({
   el: "#vm",
   data: {
-    field,
-    players,
+    hand: players[0].handString(),
+    validPlays: players[0].validPlays,
     log,
-    validPlays: [],
-    drawButtonActive: true,
+    drawButtonActive: false,
+    notDrawButtonActive: true,
+    validPlaysActive: false,
   },
   methods: {
-    voidFunc: function() { console.log("void"); },
+    drawPhase: drawPhase,
+    discardPhase: discardPhase,
   },
 });
 
-let intervalId = setInterval(gameManager, 100); // 100ms間隔
+let intervalId = setInterval(computerTurn, 100); // 100ms間隔
