@@ -17,17 +17,6 @@
 // をループする
 
 // 旧コード
-
-function playToStr(play) {
-  if (typeof play === "number") {
-    return cardColor(play, true) + cardNum(play, true);
-  } else if (Array.isArray(play)) {
-    return play.map(i => cardColor(i, true) + cardNum(i, true)).join();
-  } else if (play === "pass") {
-    return play;
-  }
-}
-
 // TODO:全部変える
 function attackable(play) {
   if (field === null) { return false; }
@@ -52,12 +41,50 @@ function attack(play, i) {
   }
 }
 
+class Card {
+  /** @param {number} id 0~74のカードid */
+  constructor(id) {
+    /** @const {number} */
+    this.id = id;
+    /** @const {number} */
+    this.n = id%15;
+    /** @const {number} */
+    this.color = Math.floor(id/15);
+  }
 
-// field
-// [0, ..., 74]をシャッフルしたものを返す
-function fieldDeckInit() {
-  // [0, ..., 74]を用意
-  let deck = Array.from({length: 75}, (v,k) => k);
+  /** @return {boolean} */
+  isEight() {
+    return this.n === 7;
+  }
+
+  /**
+  * "red7"のような形式の文字列を返す。数字は1~15。
+  * @return {string}
+  */
+  toString() {
+    let colorStrings = ["r", "b", "y", "g", "o"];
+    return `${colorStrings[this.color]}${this.n + 1}`;
+  }
+}
+
+/**
+* 数字を比較してcard2が大きければtrue。決まらなければ色番号を比較。
+* @param {!Card} card1
+* @param {!Card} card2
+* @return {boolean}
+*/
+function cardCompare(card1, card2) {
+  if (card1.n !== card2.n) { return card1.n < card2.n; }
+  return card1.color < card2.color;
+}
+
+/**
+* カード配列[0, ..., 74]をシャッフルしたものを返す
+* @return {!Array<Card>}
+*/
+function deckInit() {
+  // カード配列[0, ..., 74]を用意
+  let deck = Array.from({length: 75}, (v,k) => new Card(k));
 
   // シャッフル
   for (let i = deck.length-1; i > 0; i--) {
@@ -80,8 +107,10 @@ function fieldDeckDraw() {
   return field.deck[field.di++];
 }
 
-// hands
-// プレイヤー4人に10枚づつ配る
+/**
+* プレイヤー4人にカードを10枚づつ配る
+* @return {Array<Array<Card>>}
+*/
 function handsInit() {
   let hands = [[], [], [], []];
   for (let i = 0; i < 4; ++i) {
@@ -95,41 +124,24 @@ function handsSortHand(hand) {
   hand.sort(cardCompare);
 }
 
-// card
-function cardNum(card, toStr=false) {
-  if (toStr) { return (card%15 + 1).toString(); }
-  return card%15;
-}
-
-function cardColor(card, toStr=false) {
-  let color = Math.floor(card/15);
-  if (toStr) { return ["r", "b", "y", "g", "o"][color]; }
-  return color;
-}
-
-function cardCompare(card1, card2) {
-  let numDif = cardNum(card1) - cardNum(card2);
-  if (numDif !== 0) { return numDif; }
-  return cardColor(card1) - cardColor(card2);
-}
-
-function cardIsEight(card) {
-  return cardNum(card) === 7;
-}
-
 // validPlays
 // |         |===1          |<=3        |otherwise|
 // |:--------|:-------------|:----------|:--------|
 // |null     |without 8, rev|without rev|anything |
 // |8        |nothing       |only 8     |only 8   |
 // |otherwise|without 8, rev|without rev|upper    |
+/**
+* @param {number} playerid
+* @return {Array<!Card|Array<number>|string>}
+*/
 function validPlaysGenerate(playerid) {
   const hand = hands[playerid];
+  /** @type {Array<Card>} */
   let validPlays = hand.slice(); // コピー
 
   // 8上がり禁止
   if (hand.length === 1) {
-    validPlays = validPlays.filter(card => !cardIsEight(card));
+    validPlays = validPlays.filter(card => !card.isEight());
   }
   // 革命上がり禁止のため、4枚以上のときのみ革命が可能になる
   if (hand.length >= 4) {
@@ -140,7 +152,7 @@ function validPlaysGenerate(playerid) {
   if (field.lastCard === null) {
     // フィールドが無なら何でも出せるがパスはできない
     return [...validPlays];
-  } else if (cardIsEight(field.lastCard)) {
+  } else if (field.lastCard.isEight()) {
     // 8切りに対しては8しか出せない
     return [...validPlays.filter(validPlaysCardEight), pass];
   } else {
@@ -149,13 +161,17 @@ function validPlaysGenerate(playerid) {
   }
 }
 
+/**
+* @param {Array<!Card>} validPlays
+* @return {Array<Array<number>>}
+*/
 function validPlaysRevolutions(validPlays) {
   let revolutions = [];
   for (let n = 0; n < 15; ++n) {
     // 8は革命できない
-    if (cardIsEight(n)) { continue; }
+    if (n === 7) { continue; }
 
-    let nCards = validPlays.filter(card => cardNum(card) === n);
+    let nCards = validPlays.filter(card => card.n === n);
 
     // 3つ組を全列挙して革命リストに追加
     if (nCards.length >= 3) {
@@ -171,26 +187,37 @@ function validPlaysRevolutions(validPlays) {
   return revolutions;
 }
 
-// カードであり、なおかつ8であるならtrue
+/**
+* カードであり、なおかつ8であるならtrue
+* @param {!Card|Array<number>} play
+* @return {boolean}
+*/
 function validPlaysCardEight(play) {
-  return (typeof play === "number") && cardIsEight(play);
+  return (play instanceof Card) && play.isEight();
 }
 
-// 革命であるか、カードでありフィールドと同色でなくかつ数字が<u>大きい</u>(革命考慮)
+/**
+* 革命ならtrue
+* カードであり、フィールドと同色でなくかつ革命考慮した上で数字が大きいならtrue
+* @param {!Card|Array<number>} play
+* @return {boolean}
+*/
 function validPlaysLarger(play) {
+  // 呼び出され方的に、lastCardはnullでないCard
   let lastCard = field.lastCard;
   let underRevolution = field.underRevolution;
 
-  // playが革命なら常に出せるのでtrue
+  // 革命なのでtrue
   if (Array.isArray(play)) { return true; }
 
-  const playCard = play;
-  if (cardColor(playCard) === cardColor(lastCard)) { return false; }
+  // 革命でないので、以下playはCard
+
+  if (play.color === lastCard.color) { return false; }
 
   if (underRevolution) {
-    return cardNum(playCard) < cardNum(lastCard);
+    return play.n < lastCard.n;
   } else {
-    return cardNum(playCard) > cardNum(lastCard);
+    return play.n > lastCard.n;
   }
 }
 
@@ -206,7 +233,7 @@ function discard(playerid, play) {
     hands[playerid] = hand.filter(card => !discardIsIncluded(card, revolution));
   } else {
     // playがcardだった場合、handからplayを除く
-    hands[playerid] = hand.filter(card => card !== play);
+    hands[playerid] = hand.filter(card => card.id !== play.id);
   }
 
   // 勝ちの処理
@@ -228,6 +255,17 @@ function nextPlayerRotate(playerid) {
 function isHuman(playerid) {
   return human.includes(playerid);
 }
+
+function playToStr(play) {
+  if (play instanceof Card) {
+    return play.toString();
+  } else if (Array.isArray(play)) {
+    return play.map(card => card.toString()).join(", ");
+  } else if (play === "pass") {
+    return play;
+  }
+}
+
 
 
 // phase functions
@@ -281,7 +319,8 @@ function discardPhaseExecuteComputer(playerid, validPlays) {
       field.lastCard = null;
       field.lastPlayerid = null;
     }
-  } else if (Array.isArray(play) || (cardIsEight(oldLastCard))) {
+  } else if (Array.isArray(play) ||
+             ((oldLastCard instanceof Card) && oldLastCard.isEight())) {
     // 革命もしくは8切り返しならフィールドリセット
     field.lastCard = null;
     field.lastPlayerid = null;
@@ -295,7 +334,7 @@ function discardPhaseExecuteComputer(playerid, validPlays) {
   let nextPlayerid = null;
   if (play === "pass" || Array.isArray(play)) {
     nextPlayerid = nextPlayerRotate(playerid);
-  } else if (cardIsEight(oldLastCard) && cardIsEight(play)) {
+  } else if (oldLastCard !== null && oldLastCard.isEight() && play.isEight()) {
     // 8切り返しのときのみプレイヤー変わらず
     nextPlayerid = playerid;
   } else {
@@ -332,8 +371,9 @@ function drawButtonInactivate() {
 // main
 
 let field = {
-  deck:            fieldDeckInit(),
+  deck:            deckInit(),
   di:              0,
+  /** @type {?Card} */
   lastCard:        null,
   lastPlayerid:    null,
   underRevolution: false,
