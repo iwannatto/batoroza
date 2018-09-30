@@ -11,9 +11,13 @@
   <div id="vm">
     <div>{{ field }}</div>
     <div>{{ hands }}</div>
-    <button v-show="drawButtonActive" v-on:click="voidFunc">draw</button>
-    <button v-show="drawButtonActive" v-on:click="voidFunc">not draw</button>
-    <button v-for="play in validPlays" v-on:click="voidFunc">
+    <button v-show="drawButtonActive" v-on:click="drawPhaseExecuteHuman(true)">
+      draw
+    </button>
+    <button v-show="drawButtonActive" v-on:click="drawPhaseExecuteHuman(false)">
+      not draw
+    </button>
+    <button v-for="play in validPlays">
       {{ play }}
     </button>
     <ul>

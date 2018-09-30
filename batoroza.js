@@ -5,7 +5,6 @@
 // 待っている方の関数のみをactivateしておく。
 // 両方の関数が動いたらターンを進める処理により進行する。
 
-
 // drawPhase
 //   drawableをもとに引くか引かないか選択
 //   引く処理
@@ -16,6 +15,43 @@
 //   進行、nextPlayeridとdrawable決定
 //
 // をループする
+
+// 旧コード
+
+function playToStr(play) {
+  if (typeof play === "number") {
+    return cardColor(play, true) + cardNum(play, true);
+  } else if (Array.isArray(play)) {
+    return play.map(i => cardColor(i, true) + cardNum(i, true)).join();
+  } else if (play === "pass") {
+    return play;
+  }
+}
+
+// TODO:全部変える
+function attackable(play) {
+  if (field === null) { return false; }
+  let a = Math.floor(field/15);
+  let b = Math.floor(play/15);
+  if (a+1 === b) {
+    return (a === 0) || (a === 2);
+  } else if (a-1 === b) {
+    return (a === 1) || (a === 3);
+  }
+}
+
+// TODO:全部変える
+function attack(play, i) {
+  if (!attackable(play)) { return; }
+  let a = field%15;
+  let b = play%15;
+  let n = Math.floor(Math.abs(a-b) / 3);
+  if (n > 0) {
+    for (let i = 0; i < n; ++i) { hands[last].push(draw()); }
+    appendToShow(n, "attack from", i, "to", last);
+  }
+}
+
 
 // field
 // [0, ..., 74]をシャッフルしたものを返す
@@ -141,7 +177,10 @@ function validPlaysCardEight(play) {
 }
 
 // 革命であるか、カードでありフィールドと同色でなくかつ数字が<u>大きい</u>(革命考慮)
-function validPlaysLarger(play, lastCard, underRevolution) {
+function validPlaysLarger(play) {
+  let lastCard = field.lastCard;
+  let underRevolution = field.underRevolution;
+
   // playが革命なら常に出せるのでtrue
   if (Array.isArray(play)) { return true; }
 
@@ -186,6 +225,11 @@ function nextPlayerRotate(playerid) {
   return (playerid+1) % 4;
 }
 
+function isHuman(playerid) {
+  return human.includes(playerid);
+}
+
+
 // phase functions
 
 // drawPhase
@@ -205,8 +249,15 @@ function drawPhaseExecuteComputer(playerid, drawable) {
   return validPlaysGenerate(playerid);
 }
 
-// function drawPhaseExecutePlayerTrue(playerid) {}
-// function drawPhaseExecutePlayerFalse(playerid) {}
+function drawPhaseExecuteHuman(willDraw) {
+  let playerid = field.currentPlayerid;
+  let drawable = field.currentDrawable;
+
+  if (willDraw) {
+    hands[playerid].push(fieldDeckDraw());
+    handsSortHand(hands[playerid]);
+  }
+}
 
 // discardPhase
 function discardPhaseExecuteComputer(playerid, validPlays) {
@@ -262,6 +313,7 @@ function discardPhaseExecuteComputer(playerid, validPlays) {
 function gameManager() {
   let playerid = field.currentPlayerid;
   let drawable = field.currentDrawable;
+
   let validPlays = drawPhaseExecuteComputer(playerid, drawable);
   let nextPlayeridAndDrawable = discardPhaseExecuteComputer(playerid, validPlays);
   field.currentPlayerid = nextPlayeridAndDrawable.nextPlayerid;
@@ -291,6 +343,8 @@ let field = {
 
 let hands = handsInit();
 
+let human = [0];
+
 let log = [];
 
 let vm = new Vue({
@@ -307,43 +361,4 @@ let vm = new Vue({
   },
 });
 
-
-function voidFunc() {}
-
 let intervalId = setInterval(gameManager, 100); // 100ms間隔
-
-// 旧コード
-
-function playToStr(play) {
-  if (typeof play === "number") {
-    return cardColor(play, true) + cardNum(play, true);
-  } else if (Array.isArray(play)) {
-    return play.map(i => cardColor(i, true) + cardNum(i, true)).join();
-  } else if (play === "pass") {
-    return play;
-  }
-}
-
-// TODO:全部変える
-function attackable(play) {
-  if (field === null) { return false; }
-  let a = Math.floor(field/15);
-  let b = Math.floor(play/15);
-  if (a+1 === b) {
-    return (a === 0) || (a === 2);
-  } else if (a-1 === b) {
-    return (a === 1) || (a === 3);
-  }
-}
-
-// TODO:全部変える
-function attack(play, i) {
-  if (!attackable(play)) { return; }
-  let a = field%15;
-  let b = play%15;
-  let n = Math.floor(Math.abs(a-b) / 3);
-  if (n > 0) {
-    for (let i = 0; i < n; ++i) { hands[last].push(draw()); }
-    appendToShow(n, "attack from", i, "to", last);
-  }
-}
