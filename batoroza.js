@@ -41,8 +41,92 @@ function attack(play, i) {
   }
 }
 
+// /**
+// * プレイヤー4人にカードを10枚づつ配る
+// * @return {Array<Array<Card>>}
+// */
+// // function handsInit() {
+// //   let hands = [[], [], [], []];
+// //   for (let i = 0; i < 4; ++i) {
+// //     for (let j = 0; j < 10; ++j) { hands[i].push(field.deck.draw()); }
+// //     handsSortHand(hands[i]);
+// //   }
+// //   return hands;
+// // }
+//
+// function handsSortHand(hand) {
+//   hand.sort(cardCompare);
+// }
+//
+// // validPlays
+// // |         |===1          |<=3        |otherwise|
+// // |:--------|:-------------|:----------|:--------|
+// // |null     |without 8, rev|without rev|anything |
+// // |8        |nothing       |only 8     |only 8   |
+// // |otherwise|without 8, rev|without rev|upper    |
+// /**
+// * @param {number} playerid
+// * @return {Array<!Card|Array<number>|string>}
+// */
+// function validPlaysGenerate(playerid) {
+//   const hand = hands[playerid];
+//   /** @type {Array<Card>} */
+//   let validPlays = hand.slice(); // コピー
+//
+//   // 8上がり禁止
+//   if (hand.length === 1) {
+//     validPlays = validPlays.filter(card => !card.isEight());
+//   }
+//   // 革命上がり禁止のため、4枚以上のときのみ革命が可能になる
+//   if (hand.length >= 4) {
+//     validPlays = [...validPlays, ...validPlaysRevolutions(validPlays)];
+//   }
+//
+//   const pass = "pass";
+//   if (field.lastCard === null) {
+//     // フィールドが無なら何でも出せるがパスはできない
+//     return [...validPlays];
+//   } else if (field.lastCard.isEight()) {
+//     // 8切りに対しては8しか出せない
+//     return [...validPlays.filter(validPlaysCardEight), pass];
+//   } else {
+//     // フィールドより大きい数字（と革命）
+//     return [...validPlays.filter(validPlaysLarger), pass];
+//   }
+// }
+//
+// // discard
+// function discard(playerid, play) {
+//   let hand = hands[playerid].slice(); // コピー
+//
+//   if (play === "pass") {
+//     ;
+//   } else if (Array.isArray(play)) {
+//     // playが革命だった場合、handを革命に現れないカードのみにする
+//     const revolution = play;
+//     hands[playerid] = hand.filter(card => !discardIsIncluded(card, revolution));
+//   } else {
+//     // playがcardだった場合、handからplayを除く
+//     hands[playerid] = hand.filter(card => card.id !== play.id);
+//   }
+//
+//   // 勝ちの処理
+//   if (hands[playerid].length === 0) {
+//     log.push(playerid.toString() + " win");
+//     clearInterval(intervalId);
+//   }
+// }
+//
+// function discardIsIncluded(element, array) {
+//   return array.indexOf(element) !== -1;
+// }
+//
+//
+// // let hands = handsInit();
+
 
 // ここから本コード
+
 // utility
 /**
 * @param {Array<*>} array
@@ -58,7 +142,7 @@ function shuffle(array) {
   return array;
 }
 
-
+// Card
 class Card {
   /** @param {number} id 0~74のカードid */
   constructor(id) {
@@ -83,6 +167,17 @@ class Card {
     let colorStrings = ["r", "b", "y", "g", "o"];
     return `${colorStrings[this.color]}${this.n + 1}`;
   }
+
+  /**
+  * @param {Array<!Card>} revolution
+  * @return {boolean}
+  */
+  inRevolution(revolution) {
+    for (let i = 0; i < revolution.length; ++i) {
+      if (this.id === revolution[i].id) { return true; }
+    }
+    return false;
+  }
 }
 
 /**
@@ -91,12 +186,8 @@ class Card {
 * @param {!Card} card2
 * @return {boolean}
 */
-function cardCompare(card1, card2) {
-  if (card1.n !== card2.n) { return card1.n < card2.n; }
-  return card1.color < card2.color;
-}
 
-// ここからfix
+// Deck
 class Deck {
   constructor() {
     /**
@@ -125,64 +216,97 @@ class Deck {
   }
 }
 
-
-/**
-* プレイヤー4人にカードを10枚づつ配る
-* @return {Array<Array<Card>>}
-*/
-function handsInit() {
-  let hands = [[], [], [], []];
-  for (let i = 0; i < 4; ++i) {
-    for (let j = 0; j < 10; ++j) { hands[i].push(field.deck.draw()); }
-    handsSortHand(hands[i]);
-  }
-  return hands;
-}
-
-function handsSortHand(hand) {
-  hand.sort(cardCompare);
-}
-
-// validPlays
-// |         |===1          |<=3        |otherwise|
-// |:--------|:-------------|:----------|:--------|
-// |null     |without 8, rev|without rev|anything |
-// |8        |nothing       |only 8     |only 8   |
-// |otherwise|without 8, rev|without rev|upper    |
-/**
-* @param {number} playerid
-* @return {Array<!Card|Array<number>|string>}
-*/
-function validPlaysGenerate(playerid) {
-  const hand = hands[playerid];
-  /** @type {Array<Card>} */
-  let validPlays = hand.slice(); // コピー
-
-  // 8上がり禁止
-  if (hand.length === 1) {
-    validPlays = validPlays.filter(card => !card.isEight());
-  }
-  // 革命上がり禁止のため、4枚以上のときのみ革命が可能になる
-  if (hand.length >= 4) {
-    validPlays = [...validPlays, ...validPlaysRevolutions(validPlays)];
+// ここからfix
+class Player {
+  constructor(playerid) {
+    /** @const {number} */
+    this.id = playerid;
+    /** @private {Array<Card>} */
+    this.hand_ = Array.from({length: 10}, (v, k) => field.deck.draw());
+    this.sortHand_();
+    /** @type {Array<Card|Array<number>|string>} */
+    this.validPlays = [];
   }
 
-  const pass = "pass";
-  if (field.lastCard === null) {
-    // フィールドが無なら何でも出せるがパスはできない
-    return [...validPlays];
-  } else if (field.lastCard.isEight()) {
-    // 8切りに対しては8しか出せない
-    return [...validPlays.filter(validPlaysCardEight), pass];
-  } else {
-    // フィールドより大きい数字（と革命）
-    return [...validPlays.filter(validPlaysLarger), pass];
+  // デッキからカードを引く
+  draw() {
+    this.hand_.push(field.deck.draw());
+    this.sortHand_();
+  }
+
+  // hand_から合法手を生成し、this.validPlaysに反映
+  generateValidPlays() {
+    const pass = "pass";
+
+    // 8上がり禁止
+    // 残り1枚で8しか持っていなかったら出せない
+    if (this.hand_.length === 1 && this.hand_[0].isEight()) {
+      // フィールドが無ならパスさえできない
+      this.validPlays = (field.lastCard === null) ? [] : [pass];
+      return;
+    }
+
+    // handをコピー、この時点では{Array<!Card>}
+    let validPlays = this.hand_.slice();
+
+    // 革命上がり禁止
+    // 手札が4枚以上のときのみ革命が可能とする
+    // この時点で{Array<!Card|Array<!Card>>}
+    if (this.hand_.length >= 4) {
+      validPlays = [...validPlays, ...validPlaysRevolutions(validPlays)];
+    }
+
+    // フィールドに応じて分岐
+    if (field.lastCard === null) {
+      // フィールドが無なら何でも出せるがパスはできない
+      this.validPlays = validPlays;
+    } else if (field.lastCard.isEight()) {
+      // 8切りに対しては8しか出せない
+      this.validPlays = [...validPlays.filter(validPlaysCardEight), pass];
+    } else {
+      // フィールドより大きい数字（と革命）
+      this.validPlays = [...validPlays.filter(validPlaysLarger), pass];
+    }
+  }
+
+  /**
+  * playのカードを捨て、それをthis.hand_に反映
+  * TODO:勝ちの処理がこの中にあるが、攻撃を導入するとおかしくなるのでそしたら修正
+  * @param {!Card|Array<!Card>|string} play
+  */
+  discard(play) {
+    // 捨てる処理
+    if (play instanceof Card) {
+      // playがcardだった場合、handにplay以外のものを残すことで捨てる
+      this.hand_ = this.hand_.filter(card => card.id !== play.id);
+    } else if (Array.isArray(play)) {
+      // playが革命だった場合、handにplayに含まれないもののみを残すことで捨てる
+      this.hand_ = this.hand_.filter(card => !card.inRevolution(play));
+    } else {
+      // playがpassなら何もしないで終了
+      return;
+    }
+
+    // 勝ちの処理
+    if (this.hand_.length === 0) {
+      log.push(`player ${this.id} win`);
+      clearInterval(intervalId);
+    }
+  }
+
+  // 数字昇順ソート（数字が同じなら色番号昇順）
+  sortHand_() {
+    let cardCompare = function(card1, card2) {
+      if (card1.n !== card2.n) { return card1.n > card2.n; }
+      return card1.color > card2.color;
+    }
+    this.hand_.sort(cardCompare);
   }
 }
 
 /**
 * @param {Array<!Card>} validPlays
-* @return {Array<Array<number>>}
+* @return {Array<Array<!Card>>}
 */
 function validPlaysRevolutions(validPlays) {
   let revolutions = [];
@@ -240,31 +364,6 @@ function validPlaysLarger(play) {
   }
 }
 
-// discard
-function discard(playerid, play) {
-  let hand = hands[playerid].slice(); // コピー
-
-  if (play === "pass") {
-    ;
-  } else if (Array.isArray(play)) {
-    // playが革命だった場合、handを革命に現れないカードのみにする
-    const revolution = play;
-    hands[playerid] = hand.filter(card => !discardIsIncluded(card, revolution));
-  } else {
-    // playがcardだった場合、handからplayを除く
-    hands[playerid] = hand.filter(card => card.id !== play.id);
-  }
-
-  // 勝ちの処理
-  if (hands[playerid].length === 0) {
-    log.push(playerid.toString() + " win");
-    clearInterval(intervalId);
-  }
-}
-
-function discardIsIncluded(element, array) {
-  return array.indexOf(element) !== -1;
-}
 
 // nextPlayerRotate
 function nextPlayerRotate(playerid) {
@@ -291,41 +390,50 @@ function playToStr(play) {
 
 // drawPhase
 function drawPhaseExecuteComputer(playerid, drawable) {
+  let player = players[playerid];
+
+  // 引く処理
   if (drawable) {
     // 引くかどうかをランダム(1/10)で決定
     let willDraw = (Math.floor(Math.random() * 10) < 1) ? true : false;
 
     // 引く処理の実行
+    // デッキアウトの例外処理がめんどいのでデッキアウトになるなら引かない
     if (willDraw && !field.deck.willOut()) {
-      hands[playerid].push(field.deck.draw());
-      handsSortHand(hands[playerid]);
+      player.draw();
     }
   }
 
   // 合法手生成
-  return validPlaysGenerate(playerid);
+  player.generateValidPlays();
 }
 
-function drawPhaseExecuteHuman(willDraw) {
-  let playerid = field.currentPlayerid;
-  let drawable = field.currentDrawable;
-
-  if (willDraw) {
-    hands[playerid].push(field.deck.draw());
-    handsSortHand(hands[playerid]);
-  }
-}
+// function drawPhaseExecuteHuman(willDraw) {
+//   let playerid = field.currentPlayerid;
+//   let drawable = field.currentDrawable;
+//
+//   if (willDraw) {
+//     hands[playerid].push(field.deck.draw());
+//     handsSortHand(hands[playerid]);
+//   }
+// }
 
 // discardPhase
-function discardPhaseExecuteComputer(playerid, validPlays) {
-  if (validPlays.length === 0) { throw new Error("can't do anything"); }
+function discardPhaseExecuteComputer(playerid) {
+  let player = players[playerid];
+  let validPlays = player.validPlays;
+
+  if (validPlays.length === 0) {
+    clearInterval(intervalId);
+    throw new Error("can't do anything");
+  }
 
   // 捨てる手をランダムで決定
   const play = validPlays[Math.floor(Math.random() * validPlays.length)];
 
   // 捨てる
-  log.push(playerid.toString() + " " + playToStr(play));
-  discard(playerid, play);
+  log.push(`${playerid} ${playToStr(play)}`);
+  player.discard(play);
 
   // フィールドの更新
   const oldLastCard = field.lastCard;
@@ -372,8 +480,8 @@ function gameManager() {
   let playerid = field.currentPlayerid;
   let drawable = field.currentDrawable;
 
-  let validPlays = drawPhaseExecuteComputer(playerid, drawable);
-  let nextPlayeridAndDrawable = discardPhaseExecuteComputer(playerid, validPlays);
+  drawPhaseExecuteComputer(playerid, drawable);
+  let nextPlayeridAndDrawable = discardPhaseExecuteComputer(playerid);
   field.currentPlayerid = nextPlayeridAndDrawable.nextPlayerid;
   field.currentDrawable = nextPlayeridAndDrawable.drawable;
 }
@@ -399,7 +507,8 @@ let field = {
   currentDrawable: false,
 };
 
-let hands = handsInit();
+// TODO:グローバルっぽい名前つける
+let players = Array.from({length: 4}, (v, k) => new Player(k));
 
 let human = [0];
 
@@ -408,9 +517,9 @@ let log = [];
 let vm = new Vue({
   el: "#vm",
   data: {
-    field: field,
-    hands: hands,
-    log: log,
+    field,
+    players,
+    log,
     validPlays: [],
     drawButtonActive: true,
   },
